@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -123,6 +124,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # reports list
+    default_reports_dir = os.getenv("FORGEFIT_REPORTS_DIR", "reports")
     list_parser = reports_subparsers.add_parser(
         "list",
         help="List saved execution reports.",
@@ -131,8 +133,8 @@ def create_parser() -> argparse.ArgumentParser:
     list_parser.add_argument(
         "--directory",
         "-d",
-        default="reports",
-        help="Directory containing report files (default: reports).",
+        default=default_reports_dir,
+        help=f"Directory containing report files (default: {default_reports_dir}).",
     )
 
     # reports compare
@@ -188,6 +190,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # Subcommand: web
+    default_host = os.getenv("HOST", "127.0.0.1")
+    default_port_str = os.getenv("PORT", "8000")
+    try:
+        default_port = int(default_port_str)
+    except ValueError:
+        default_port = 8000
+
     web_parser = subparsers.add_parser(
         "web",
         help="Launch the ForgeFit interactive web application.",
@@ -195,15 +204,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
     web_parser.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="Bind host (default: 127.0.0.1).",
+        default=default_host,
+        help=f"Bind host (default: {default_host}).",
     )
     web_parser.add_argument(
         "--port",
         "-p",
         type=int,
-        default=8000,
-        help="Bind port (default: 8000).",
+        default=default_port,
+        help=f"Bind port (default: {default_port}).",
     )
     web_parser.add_argument(
         "--reload",

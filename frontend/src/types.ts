@@ -140,4 +140,5 @@ export interface ApiStatus {
     external_requires_authorization: boolean;
     deadline_clamping_enforced: boolean;
   };
+  api_key_required?: boolean;
 }

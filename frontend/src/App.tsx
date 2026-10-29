@@ -10,7 +10,10 @@ import {
   Menu,
   X,
   ShieldCheck,
-  Globe
+  Globe,
+  Key,
+  Lock,
+  Check
 } from 'lucide-react';
 import { LandingPage } from './views/LandingPage';
 import { OverviewView } from './views/OverviewView';
@@ -20,7 +23,7 @@ import { ReportsView } from './views/ReportsView';
 import { ComparisonView } from './views/ComparisonView';
 import { AboutView } from './views/AboutView';
 import type { ApiStatus, ReportSummary } from './types';
-import { fetchApiStatus, fetchSavedReports } from './api';
+import { fetchApiStatus, fetchSavedReports, getStoredApiKey, setStoredApiKey } from './api';
 import './App.css';
 
 export const App: React.FC = () => {
@@ -39,6 +42,11 @@ export const App: React.FC = () => {
   const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
   const [apiConnected, setApiConnected] = useState(false);
   const [reports, setReports] = useState<ReportSummary[]>([]);
+
+  // Session API Key State
+  const [apiKey, setApiKey] = useState(getStoredApiKey());
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [inputKey, setInputKey] = useState(getStoredApiKey());
 
   const refreshGlobalData = async () => {
     try {
@@ -224,6 +232,20 @@ export const App: React.FC = () => {
               <ShieldCheck size={16} color="var(--color-success)" />
               <span className="badge badge-success">Loopback Guarded</span>
             </div>
+
+            <button
+              className={`btn btn-sm ${apiKey ? 'btn-secondary' : apiStatus?.api_key_required ? 'btn-warning' : 'btn-subtle'}`}
+              onClick={() => {
+                setInputKey(apiKey);
+                setShowApiKeyModal(true);
+              }}
+              title={apiKey ? "API Key active (session)" : apiStatus?.api_key_required ? "API Key required by backend" : "Configure API Key (optional)"}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}
+            >
+              <Key size={14} />
+              <span>{apiKey ? 'API Key Set' : apiStatus?.api_key_required ? 'API Key Required' : 'API Key'}</span>
+            </button>
+
             <button
               className="btn btn-primary btn-sm"
               onClick={() => handleNavigate('new-test')}
@@ -273,6 +295,112 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'about' && <AboutView />}
+
+        {/* API Key Session Modal */}
+        {showApiKeyModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 999,
+              padding: '16px',
+            }}
+            onClick={() => setShowApiKeyModal(false)}
+          >
+            <div
+              className="ff-card"
+              style={{ maxWidth: '440px', width: '100%', display: 'flex', flexDirection: 'column' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '1.05rem' }}>
+                  <Lock size={18} color="var(--accent-primary)" />
+                  Backend Access Key
+                </div>
+                <button
+                  className="btn-icon"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                  onClick={() => setShowApiKeyModal(false)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {apiStatus?.api_key_required ? (
+                    <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>
+                      The connected ForgeFit backend requires an API key to launch runs.
+                    </span>
+                  ) : (
+                    'Enter your shared API key if your hosted ForgeFit backend has FORGEFIT_API_KEY enabled.'
+                  )}
+                  {' '}The key is kept in browser session memory only and is never stored in persistent local storage or production bundles.
+                </p>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    X-ForgeFit-API-Key
+                  </label>
+                  <input
+                    type="password"
+                    value={inputKey}
+                    onChange={(e) => setInputKey(e.target.value)}
+                    placeholder="Enter secret API key..."
+                    className="form-input"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--bg-canvas)',
+                      border: '1px solid var(--border-strong)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.85rem'
+                    }}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
+                {apiKey ? (
+                  <button
+                    className="btn btn-subtle btn-sm"
+                    onClick={() => {
+                      setStoredApiKey('');
+                      setApiKey('');
+                      setInputKey('');
+                      setShowApiKeyModal(false);
+                    }}
+                  >
+                    Clear Key
+                  </button>
+                ) : <div />}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowApiKeyModal(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      setStoredApiKey(inputKey);
+                      setApiKey(inputKey.trim());
+                      setShowApiKeyModal(false);
+                    }}
+                  >
+                    <Check size={14} />
+                    Save for Session
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

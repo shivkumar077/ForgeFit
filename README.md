@@ -534,7 +534,7 @@ ForgeFit uses `pytest` for unit testing and `Ruff` for linting and formatting.
 # Run the complete test suite offline
 pytest -v
 ```
-All 179 automated tests execute entirely offline using local mock servers and temporary directories. Zero external network calls are made.
+All 185 automated tests execute entirely offline using local mock servers and temporary directories. Zero external network calls are made.
 
 ### Run Linter & Formatter
 ```powershell
@@ -547,6 +547,96 @@ ruff format --check src tests
 # Auto-format codebase
 ruff format src tests
 ```
+
+---
+
+## Cloud Deployment Guide (Render + Vercel Split Architecture)
+
+ForgeFit supports a secure split deployment architecture:
+- **Backend API**: Hosted on [Render](https://render.com) (Python 3.12+ FastAPI Web Service with persistent disk for JSON reports).
+- **Frontend UI**: Hosted on [Vercel](https://vercel.com) (Static Vite React SPA with client-side routing).
+
+> [!NOTE]
+> This repository contains deployment preparation, configuration files, and local build verification. No live deployment to external cloud accounts has been executed.
+
+### Architecture & Security Overview
+
+```
+┌─────────────────────────────────┐           ┌─────────────────────────────────┐
+│     Vercel Frontend (SPA)       │           │      Render Backend (FastAPI)   │
+│  - Vite React client            │           │  - Uvicorn / Python 3.12        │
+│  - VITE_API_BASE_URL            │  HTTPS    │  - FORGEFIT_CORS_ORIGINS        │
+│  - X-ForgeFit-API-Key (session) ├──────────►│  - FORGEFIT_API_KEY (optional) │
+│  - Session-only storage         │           │  - Persistent Disk (/var/data)  │
+└─────────────────────────────────┘           └────────────────┬────────────────┘
+                                                               │
+                                                               ▼
+                                                  ┌─────────────────────────────┐
+                                                  │ Atomic JSON Report Storage  │
+                                                  │ (/var/data/reports)         │
+                                                  └─────────────────────────────┘
+```
+
+### Environment Variables Reference
+
+| Variable | Target | Purpose | Default / Example |
+| :--- | :--- | :--- | :--- |
+| `VITE_API_BASE_URL` | Frontend (Vercel) | Full base URL of the backend API (including `/api`) | `https://your-service.onrender.com/api` (Local default: `/api`) |
+| `FORGEFIT_CORS_ORIGINS` | Backend (Render) | Comma-separated allowed frontend origins | `https://your-app.vercel.app` (Local defaults: `localhost:5173`, etc.) |
+| `FORGEFIT_API_KEY` | Backend (Render) | Shared secret protecting `POST /api/runs` | Random secret token (e.g. `sk_live_...`). If unset, authentication is disabled. |
+| `FORGEFIT_REPORTS_DIR` | Backend (Render) | Directory path for atomic JSON report persistence | `/var/data/reports` (Local default: `reports`) |
+| `PORT` | Backend (Render) | Port for Uvicorn server | Set automatically by Render runtime |
+
+---
+
+### Backend Deployment (Render)
+
+1. **Create Web Service**:
+   - In the Render Dashboard, choose **New + > Web Service** and connect your ForgeFit repository.
+   - Alternatively, deploy using the included [`render.yaml`](file:///c:/Users/sk699/OneDrive/Desktop/ForgeFit/render.yaml) Blueprint.
+2. **Service Settings**:
+   - **Environment**: `Python 3`
+   - **Python Version**: `3.12.6` (configured via `PYTHON_VERSION` environment variable)
+   - **Root Directory**: `.` (repository root)
+   - **Build Command**: `pip install ".[web]"`
+   - **Start Command**: `uvicorn forgefit.api:app --host 0.0.0.0 --port $PORT`
+   - **Health Check Path**: `/api/status`
+3. **Persistent Disk (Critical for Report Retention)**:
+   - Attach a Render Persistent Disk:
+     - **Name**: `forgefit-data`
+     - **Mount Path**: `/var/data`
+     - **Size**: 1 GB (or as required)
+   - Set environment variable: `FORGEFIT_REPORTS_DIR=/var/data/reports`.
+   - When configured, ForgeFit automatically creates and locks this directory for all run reports, listing, comparisons, and exports, preventing arbitrary client path manipulation.
+4. **Environment Variables**:
+   - `FORGEFIT_CORS_ORIGINS`: Add your exact Vercel production domain (e.g. `https://forgefit.vercel.app`). Do not use wildcard `*` with credentials.
+   - `FORGEFIT_API_KEY`: Set a cryptographically strong secret token. When set, `POST /api/runs` requires the `X-ForgeFit-API-Key` header with constant-time verification.
+
+---
+
+### Frontend Deployment (Vercel)
+
+1. **Import Project**:
+   - In the Vercel Dashboard, click **Add New... > Project** and import your ForgeFit repository.
+2. **Project Settings**:
+   - **Root Directory**: `frontend`
+   - **Framework Preset**: `Vite`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+3. **Environment Variables**:
+   - `VITE_API_BASE_URL`: `https://YOUR-RENDER-SERVICE.onrender.com/api` (ensure it points to your Render backend).
+4. **SPA Routing**:
+   - Handled automatically by [`frontend/vercel.json`](file:///c:/Users/sk699/OneDrive/Desktop/ForgeFit/frontend/vercel.json) using client-side rewrites to `/index.html`.
+
+---
+
+### Hosted API Security & API Key Management
+
+- **No Public Run Launch**: A hosted resilience-testing backend should never be exposed as an open, unauthenticated stress-testing tool. Setting `FORGEFIT_API_KEY` locks execution behind authentication.
+- **Constant-Time Verification**: Uses `secrets.compare_digest` to prevent timing attacks.
+- **Zero Secret Exposure**: The key is never returned by `/api/status`, never written to reports or logs, and never baked into client bundles.
+- **Session-Only Operator Entry**: When connecting to a protected backend, operators enter their key via the web interface's **API Key** control modal. The key is held strictly in `sessionStorage` or in-memory state for the active browser session, clearing automatically when the tab is closed.
+- **Safety Flags Maintained**: The engine's loopback-by-default rules and dual authorization requirements for external hosts (`allow_external` and `authorized_acknowledgement`) remain strictly enforced regardless of deployment mode.
 
 ---
 

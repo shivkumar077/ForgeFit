@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,33 +36,116 @@ app = FastAPI(
     version=__version__,
 )
 
-# Configure CORS for local development (e.g. Vite dev server)
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+]
+
+
+def get_cors_origins() -> list[str]:
+    """Return parsed CORS origins from FORGEFIT_CORS_ORIGINS or local defaults.
+
+    Disallows wildcard origins when credentials are enabled.
+    """
+    raw = os.getenv("FORGEFIT_CORS_ORIGINS", "").strip()
+    if not raw:
+        return list(DEFAULT_CORS_ORIGINS)
+    origins = [
+        o.strip().rstrip("/") for o in raw.split(",") if o.strip() and o.strip() != "*"
+    ]
+    return origins if origins else list(DEFAULT_CORS_ORIGINS)
+
+
+# Configure CORS with explicit allowed origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-def _validate_safe_directory(directory: str | Path) -> Path:
-    """Validate and resolve directory to prevent path traversal attacks."""
-    raw_str = str(directory).strip() or "reports"
+def verify_api_key(
+    x_forgefit_api_key: str | None = Header(None, alias="X-ForgeFit-API-Key"),
+) -> None:
+    """Verify shared API key authentication for protected operations.
+
+    Active only when FORGEFIT_API_KEY is configured in the environment.
+    Uses constant-time comparison to protect against timing attacks.
+    """
+    configured_key = os.getenv("FORGEFIT_API_KEY", "").strip()
+    if not configured_key:
+        return  # Unprotected when FORGEFIT_API_KEY is not set
+
+    if not x_forgefit_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing required X-ForgeFit-API-Key header",
+        )
+
+    if not secrets.compare_digest(x_forgefit_api_key, configured_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid X-ForgeFit-API-Key header",
+        )
+
+
+def get_configured_reports_dir() -> Path:
+    """Return the canonical reports directory configured by FORGEFIT_REPORTS_DIR.
+
+    Defaults to 'reports' in the current working directory.
+    Creates the directory if it does not exist.
+    """
+    raw = os.getenv("FORGEFIT_REPORTS_DIR", "").strip()
+    if raw:
+        path = Path(raw).resolve()
+    else:
+        path = (Path.cwd() / "reports").resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _resolve_reports_directory(requested_dir: str | Path | None = None) -> Path:
+    """Resolve report directory safely.
+
+    If FORGEFIT_REPORTS_DIR is explicitly configured in the environment
+    (e.g. Render persistent disk), that canonical directory is strictly
+    enforced and cannot be overridden by arbitrary browser-supplied
+    filesystem paths.
+
+    When FORGEFIT_REPORTS_DIR is not set (e.g. local development or pytest tmp_path):
+    - Defaults to 'reports'.
+    - If an alternative directory is requested, validates that it contains no
+      directory traversal ('..') and resolves safely.
+    """
+    configured = os.getenv("FORGEFIT_REPORTS_DIR", "").strip()
+    if configured:
+        return get_configured_reports_dir()
+
+    if (
+        not requested_dir
+        or not str(requested_dir).strip()
+        or str(requested_dir).strip() == "reports"
+    ):
+        return get_configured_reports_dir()
+
+    raw_str = str(requested_dir).strip()
     if ".." in raw_str:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Directory traversal is not permitted",
         )
     try:
-        return Path(raw_str).resolve()
+        resolved = Path(raw_str).resolve()
+        resolved.mkdir(parents=True, exist_ok=True)
+        return resolved
     except Exception as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -256,6 +341,8 @@ def _execute_run_thread(
 @app.get("/api/status")
 def get_status() -> dict[str, Any]:
     """Return health status, version, and supported feature capabilities."""
+    api_key_configured = bool(os.getenv("FORGEFIT_API_KEY", "").strip())
+    reports_dir = str(get_configured_reports_dir())
     return {
         "status": "ok",
         "version": __version__,
@@ -270,7 +357,8 @@ def get_status() -> dict[str, Any]:
         ],
         "supported_schedules": ["constant", "step", "ramped"],
         "supported_export_formats": ["prometheus", "opentelemetry", "otel"],
-        "default_output_dir": "reports",
+        "default_output_dir": reports_dir,
+        "api_key_required": api_key_configured,
         "safety_controls": {
             "loopback_only_by_default": True,
             "external_requires_authorization": True,
@@ -301,7 +389,10 @@ def validate_scenario(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.post("/api/runs")
-def start_run(payload: dict[str, Any]) -> dict[str, Any]:
+def start_run(
+    payload: dict[str, Any],
+    _: None = Depends(verify_api_key),
+) -> dict[str, Any]:
     """Initiate a controlled resilience test run in the background."""
     if not isinstance(payload, dict):
         raise HTTPException(
@@ -350,8 +441,8 @@ def start_run(payload: dict[str, Any]) -> dict[str, Any]:
             )
 
     save_report_flag = bool(payload.get("save_report", True))
-    raw_output_dir = str(payload.get("output_dir", "reports")).strip() or "reports"
-    safe_output_dir = _validate_safe_directory(raw_output_dir)
+    raw_output_dir = payload.get("output_dir")
+    safe_output_dir = _resolve_reports_directory(raw_output_dir)
 
     run_id = job_manager.create_run(scenario, output_dir=str(safe_output_dir))
 
@@ -379,7 +470,7 @@ def get_run_status(
 ) -> dict[str, Any]:
     """Retrieve execution status and completed report for a run."""
     safe_id = _validate_safe_run_id(run_id)
-    safe_dir = _validate_safe_directory(output_dir)
+    safe_dir = _resolve_reports_directory(output_dir)
     run_state = job_manager.get_run(safe_id, output_dir=safe_dir)
     if not run_state:
         raise HTTPException(
@@ -392,7 +483,7 @@ def get_run_status(
 @app.get("/api/reports")
 def get_reports(directory: str = Query("reports")) -> list[dict[str, Any]]:
     """List saved execution reports in the specified directory."""
-    safe_dir = _validate_safe_directory(directory)
+    safe_dir = _resolve_reports_directory(directory)
     if not safe_dir.is_dir():
         return []
 
@@ -420,7 +511,7 @@ def get_single_report(
 ) -> dict[str, Any]:
     """Load a single persisted report by run_id."""
     safe_id = _validate_safe_run_id(run_id)
-    safe_dir = _validate_safe_directory(directory)
+    safe_dir = _resolve_reports_directory(directory)
     if not safe_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -464,7 +555,7 @@ def compare_saved_reports(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     directory = str(payload.get("directory", "reports"))
-    safe_dir = _validate_safe_directory(directory)
+    safe_dir = _resolve_reports_directory(directory)
     raw_baseline_id = payload.get("baseline_run_id")
     raw_comparison_id = payload.get("comparison_run_id")
 
@@ -529,7 +620,7 @@ def export_saved_report(
 ) -> Any:
     """Export a saved report to Prometheus text or OpenTelemetry JSON format."""
     safe_id = _validate_safe_run_id(run_id)
-    safe_dir = _validate_safe_directory(directory)
+    safe_dir = _resolve_reports_directory(directory)
     if not safe_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

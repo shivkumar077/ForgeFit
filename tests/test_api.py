@@ -6,6 +6,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from forgefit import __version__
@@ -300,9 +301,131 @@ def test_api_concurrency_bounding() -> None:
     assert id1 and id2
 
     # 3rd run should raise 429
-    import pytest
     from fastapi import HTTPException
 
     with pytest.raises(HTTPException) as exc_info:
         jm.create_run(sc)
     assert exc_info.value.status_code == 429
+
+
+def test_cors_origins_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test get_cors_origins parses environment variable and filters invalid entries."""
+    from forgefit.api import DEFAULT_CORS_ORIGINS, get_cors_origins
+
+    # When unset, returns DEFAULT_CORS_ORIGINS
+    monkeypatch.delenv("FORGEFIT_CORS_ORIGINS", raising=False)
+    assert get_cors_origins() == DEFAULT_CORS_ORIGINS
+
+    # Custom comma-separated list
+    monkeypatch.setenv(
+        "FORGEFIT_CORS_ORIGINS",
+        "https://my-app.vercel.app, https://forgefit.example.com/, *",
+    )
+    parsed = get_cors_origins()
+    assert "https://my-app.vercel.app" in parsed
+    assert "https://forgefit.example.com" in parsed
+    # Wildcard is stripped for security when credentials are used
+    assert "*" not in parsed
+
+
+def test_api_key_protection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Test API key authentication for POST /api/runs."""
+    client = TestClient(app)
+    run_payload = {
+        "scenario": {
+            "name": "Auth Scenario",
+            "config": {
+                "target_url": "http://127.0.0.1:8000/api/status",
+                "request_count": 1,
+            },
+        },
+        "output_dir": str(tmp_path),
+    }
+
+    # Case 1: FORGEFIT_API_KEY is not set -> Unauthenticated access allowed
+    monkeypatch.delenv("FORGEFIT_API_KEY", raising=False)
+    status_resp = client.get("/api/status")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["api_key_required"] is False
+
+    run_resp = client.post("/api/runs", json=run_payload)
+    assert run_resp.status_code == 200
+
+    # Case 2: FORGEFIT_API_KEY is configured
+    test_key = "test-secret-key-42"
+    monkeypatch.setenv("FORGEFIT_API_KEY", test_key)
+
+    # Status endpoint reflects requirement without exposing key
+    status_resp = client.get("/api/status")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["api_key_required"] is True
+    assert "test-secret-key-42" not in status_resp.text
+
+    # Missing header -> 401
+    missing_resp = client.post("/api/runs", json=run_payload)
+    assert missing_resp.status_code == 401
+    assert "Missing required X-ForgeFit-API-Key" in missing_resp.json()["detail"]
+
+    # Incorrect header -> 401
+    wrong_resp = client.post(
+        "/api/runs",
+        json=run_payload,
+        headers={"X-ForgeFit-API-Key": "wrong-key"},
+    )
+    assert wrong_resp.status_code == 401
+    assert "Invalid X-ForgeFit-API-Key" in wrong_resp.json()["detail"]
+
+    # Correct header -> 200
+    correct_resp = client.post(
+        "/api/runs",
+        json=run_payload,
+        headers={"X-ForgeFit-API-Key": test_key},
+    )
+    assert correct_resp.status_code == 200
+    assert "run_id" in correct_resp.json()
+
+
+def test_configured_reports_dir_isolation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Test that FORGEFIT_REPORTS_DIR locks the reports directory."""
+    client = TestClient(app)
+    custom_reports = tmp_path / "custom_reports"
+    custom_reports.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("FORGEFIT_REPORTS_DIR", str(custom_reports))
+
+    status_resp = client.get("/api/status")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["default_output_dir"] == str(custom_reports)
+
+    # Save a report directly in custom_reports
+    sc = Scenario(
+        name="Locked Dir Scenario",
+        config=ResilienceConfig(target_url="http://127.0.0.1:8000/api/status"),
+    )
+    now = datetime.now(UTC)
+    rep = ResilienceReport(
+        scenario_name="Locked Dir Scenario",
+        total_requests=1,
+        successful_requests=1,
+        failed_requests=0,
+        simulated_fault_count=0,
+        average_latency_ms=10.0,
+        p95_latency_ms=10.0,
+        start_time=now,
+        end_time=now,
+    )
+    save_report(rep, scenario=sc, output_dir=custom_reports, run_id="locked_run_1")
+
+    # Listing with an attempted client override still uses custom_reports
+    list_resp = client.get("/api/reports?directory=some_other_directory")
+    assert list_resp.status_code == 200
+    reports = list_resp.json()
+    assert len(reports) == 1
+    assert reports[0]["run_id"] == "locked_run_1"
+
+    # Fetching report
+    get_resp = client.get("/api/reports/locked_run_1?directory=some_other_directory")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["run_id"] == "locked_run_1"

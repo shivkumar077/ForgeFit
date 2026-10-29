@@ -1,0 +1,18 @@
+{
+  "name": "Localhost Baseline Healthcheck",
+  "description": "Standard resilience evaluation against local healthcheck endpoint with 50ms artificial latency and 5% simulated fault injection.",
+  "tags": [
+    "smoke",
+    "local",
+    "baseline"
+  ],
+  "config": {
+    "target_url": "http://127.0.0.1:8080/health",
+    "request_count": 20,
+    "timeout_seconds": 2.0,
+    "artificial_latency_ms": 50,
+    "failure_probability": 0.05,
+    "total_deadline_seconds": 30.0,
+    "seed": 42
+  }
+}

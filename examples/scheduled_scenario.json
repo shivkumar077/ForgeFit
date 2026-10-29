@@ -1,0 +1,25 @@
+{
+  "name": "Progressive Resilience Ramp",
+  "description": "Gradually ramps latency from 20ms to 200ms and failure probability from 0% to 30% across 20 iterations.",
+  "tags": [
+    "ramp",
+    "stress",
+    "adaptive"
+  ],
+  "schedule": {
+    "schedule_type": "ramped",
+    "start_latency_ms": 20,
+    "end_latency_ms": 200,
+    "start_failure_probability": 0.0,
+    "end_failure_probability": 0.3,
+    "ramp_requests": 20,
+    "start_iteration": 1
+  },
+  "config": {
+    "target_url": "http://127.0.0.1:8080/api",
+    "request_count": 25,
+    "timeout_seconds": 2.0,
+    "total_deadline_seconds": 30.0,
+    "seed": 100
+  }
+}

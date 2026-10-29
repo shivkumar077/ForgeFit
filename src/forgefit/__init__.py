@@ -31,7 +31,7 @@ from forgefit.schedules import (
     create_fault_schedule,
 )
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __all__ = [
     "ClientResponse",
     "ConstantFaultSchedule",

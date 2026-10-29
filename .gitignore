@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Frontend dependencies and build
+node_modules/
+npm-debug.log*
+
+# Generated Reports
+reports/
+
+# Agent runtime files
+.agents/
+skills-lock.json

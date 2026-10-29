@@ -594,3 +594,16 @@ def test_cli_web_help(capsys: pytest.CaptureFixture[str]) -> None:
     captured = capsys.readouterr()
     assert "Start the local ForgeFit web API" in captured.out
     assert "--port" in captured.out
+
+
+def test_cli_web_port_conflict(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """forgefit web displays helpful instructions when port is in use."""
+    monkeypatch.setattr("forgefit.cli._is_port_in_use", lambda host, port: True)
+    exit_code = main(["web", "--port", "8000"])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Port conflict detected" in captured.err
+    assert "forgefit web --port 8001" in captured.err

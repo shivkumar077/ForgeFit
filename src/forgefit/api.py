@@ -51,17 +51,73 @@ app.add_middleware(
 )
 
 
+def _validate_safe_directory(directory: str | Path) -> Path:
+    """Validate and resolve directory to prevent path traversal attacks."""
+    raw_str = str(directory).strip() or "reports"
+    if ".." in raw_str:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Directory traversal is not permitted",
+        )
+    try:
+        return Path(raw_str).resolve()
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid directory path: {err}",
+        )
+
+
+def _validate_safe_run_id(run_id: str) -> str:
+    """Validate run_id against path traversal attacks."""
+    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Invalid run_id '{run_id}': "
+                "cannot contain path separators or traversal characters"
+            ),
+        )
+    return sanitize_filename(run_id)
+
+
 class JobManager:
     """In-memory thread-safe manager for tracking resilience test runs."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_concurrent: int = 5, max_history: int = 100) -> None:
         self._lock = threading.Lock()
         self._runs: dict[str, dict[str, Any]] = {}
+        self._max_concurrent = max_concurrent
+        self._max_history = max_history
 
     def create_run(self, scenario: Scenario, output_dir: str = "reports") -> str:
-        """Create and register a new run in queued status."""
-        run_id = generate_run_id()
+        """Create and register a new run in queued status with concurrency bounding."""
         with self._lock:
+            active_count = sum(
+                1
+                for r in self._runs.values()
+                if r.get("status") in ("queued", "running")
+            )
+            if active_count >= self._max_concurrent:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=(
+                        f"Active run limit reached ({self._max_concurrent}). "
+                        "Please wait for active runs to finish."
+                    ),
+                )
+
+            # Evict oldest completed runs if history grows large
+            if len(self._runs) >= self._max_history:
+                inactive = [
+                    k
+                    for k, r in self._runs.items()
+                    if r.get("status") in ("completed", "interrupted", "failed")
+                ]
+                for k in inactive[: len(self._runs) - self._max_history + 1]:
+                    self._runs.pop(k, None)
+
+            run_id = generate_run_id()
             self._runs[run_id] = {
                 "run_id": run_id,
                 "scenario_name": scenario.name,
@@ -294,14 +350,15 @@ def start_run(payload: dict[str, Any]) -> dict[str, Any]:
             )
 
     save_report_flag = bool(payload.get("save_report", True))
-    output_dir = str(payload.get("output_dir", "reports")).strip() or "reports"
+    raw_output_dir = str(payload.get("output_dir", "reports")).strip() or "reports"
+    safe_output_dir = _validate_safe_directory(raw_output_dir)
 
-    run_id = job_manager.create_run(scenario, output_dir=output_dir)
+    run_id = job_manager.create_run(scenario, output_dir=str(safe_output_dir))
 
     # Launch execution thread
     thread = threading.Thread(
         target=_execute_run_thread,
-        args=(run_id, scenario, save_report_flag, output_dir),
+        args=(run_id, scenario, save_report_flag, str(safe_output_dir)),
         daemon=True,
     )
     thread.start()
@@ -321,7 +378,9 @@ def get_run_status(
     output_dir: str = Query("reports"),
 ) -> dict[str, Any]:
     """Retrieve execution status and completed report for a run."""
-    run_state = job_manager.get_run(run_id, output_dir=output_dir)
+    safe_id = _validate_safe_run_id(run_id)
+    safe_dir = _validate_safe_directory(output_dir)
+    run_state = job_manager.get_run(safe_id, output_dir=safe_dir)
     if not run_state:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -333,11 +392,11 @@ def get_run_status(
 @app.get("/api/reports")
 def get_reports(directory: str = Query("reports")) -> list[dict[str, Any]]:
     """List saved execution reports in the specified directory."""
-    dir_path = Path(directory)
-    if not dir_path.is_dir():
+    safe_dir = _validate_safe_directory(directory)
+    if not safe_dir.is_dir():
         return []
 
-    summaries = list_reports(dir_path)
+    summaries = list_reports(safe_dir)
     return [
         {
             "run_id": s.run_id,
@@ -360,16 +419,16 @@ def get_single_report(
     directory: str = Query("reports"),
 ) -> dict[str, Any]:
     """Load a single persisted report by run_id."""
-    dir_path = Path(directory)
-    if not dir_path.is_dir():
+    safe_id = _validate_safe_run_id(run_id)
+    safe_dir = _validate_safe_directory(directory)
+    if not safe_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Report directory '{directory}' does not exist",
         )
 
-    safe_id = sanitize_filename(run_id)
     matched_file: Path | None = None
-    for file_path in dir_path.glob(f"*{safe_id}*.json"):
+    for file_path in safe_dir.glob(f"*{safe_id}*.json"):
         if file_path.name.startswith("."):
             continue
         try:
@@ -405,17 +464,20 @@ def compare_saved_reports(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     directory = str(payload.get("directory", "reports"))
-    baseline_id = payload.get("baseline_run_id")
-    comparison_id = payload.get("comparison_run_id")
+    safe_dir = _validate_safe_directory(directory)
+    raw_baseline_id = payload.get("baseline_run_id")
+    raw_comparison_id = payload.get("comparison_run_id")
 
-    if not baseline_id or not comparison_id:
+    if not raw_baseline_id or not raw_comparison_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Both 'baseline_run_id' and 'comparison_run_id' are required",
         )
 
-    dir_path = Path(directory)
-    if not dir_path.is_dir():
+    baseline_id = _validate_safe_run_id(str(raw_baseline_id))
+    comparison_id = _validate_safe_run_id(str(raw_comparison_id))
+
+    if not safe_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Directory '{directory}' does not exist",
@@ -425,7 +487,7 @@ def compare_saved_reports(payload: dict[str, Any]) -> dict[str, Any]:
     baseline_report: dict[str, Any] | None = None
     comparison_report: dict[str, Any] | None = None
 
-    for file_path in dir_path.glob("*.json"):
+    for file_path in safe_dir.glob("*.json"):
         if file_path.name.startswith("."):
             continue
         try:
@@ -466,16 +528,16 @@ def export_saved_report(
     directory: str = Query("reports"),
 ) -> Any:
     """Export a saved report to Prometheus text or OpenTelemetry JSON format."""
-    dir_path = Path(directory)
-    if not dir_path.is_dir():
+    safe_id = _validate_safe_run_id(run_id)
+    safe_dir = _validate_safe_directory(directory)
+    if not safe_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Directory '{directory}' not found",
         )
 
-    safe_id = sanitize_filename(run_id)
     matched_file: Path | None = None
-    for file_path in dir_path.glob(f"*{safe_id}*.json"):
+    for file_path in safe_dir.glob(f"*{safe_id}*.json"):
         if file_path.name.startswith("."):
             continue
         try:

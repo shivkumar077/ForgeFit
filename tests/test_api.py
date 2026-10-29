@@ -265,3 +265,44 @@ def test_api_reports_export(tmp_path: Path) -> None:
         f"/api/reports/{run_id}/export?format=unknown&directory={tmp_path}"
     )
     assert bad_resp.status_code == 400
+
+
+def test_api_path_traversal_rejected() -> None:
+    """Test API rejects path traversal in directory and run_id parameters."""
+    client = TestClient(app)
+
+    # Directory traversal rejection
+    resp = client.get("/api/reports?directory=../../sensitive")
+    assert resp.status_code == 400
+    assert "Directory traversal is not permitted" in resp.json()["detail"]
+
+    # Run ID path traversal rejection
+    resp2 = client.get("/api/reports/..%2F..%2Fetc/export")
+    assert resp2.status_code in (400, 404)
+
+    resp3 = client.get("/api/reports/run_safe/export?directory=../reports")
+    assert resp3.status_code == 400
+
+
+def test_api_concurrency_bounding() -> None:
+    """Test JobManager enforces active concurrent run limit."""
+    from forgefit.api import JobManager
+
+    jm = JobManager(max_concurrent=2)
+    cfg = ResilienceConfig(
+        target_url="http://127.0.0.1:8000/api/status",
+        request_count=5,
+    )
+    sc = Scenario(name="Bounded Scenario", config=cfg)
+
+    id1 = jm.create_run(sc)
+    id2 = jm.create_run(sc)
+    assert id1 and id2
+
+    # 3rd run should raise 429
+    import pytest
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        jm.create_run(sc)
+    assert exc_info.value.status_code == 429

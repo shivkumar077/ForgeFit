@@ -100,7 +100,7 @@ export const App: React.FC = () => {
       <LandingPage
         onEnterApp={handleEnterApp}
         apiConnected={apiConnected}
-        version={apiStatus?.version || '0.1.0'}
+        version={apiStatus?.version || '1.0.0'}
       />
     );
   }
@@ -116,7 +116,7 @@ export const App: React.FC = () => {
           <div className="brand-text">
             <h1>
               ForgeFit
-              <span className="version-badge">v{apiStatus?.version || '0.1.0'}</span>
+              <span className="version-badge">v{apiStatus?.version || '1.0.0'}</span>
             </h1>
             <div className="brand-tagline">API Resilience Toolkit</div>
           </div>

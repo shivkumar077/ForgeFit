@@ -88,7 +88,7 @@ class ResilienceClient:
     - No credentials or sensitive headers by default.
     """
 
-    def __init__(self, user_agent: str = "ForgeFit/0.1.0") -> None:
+    def __init__(self, user_agent: str = "ForgeFit/1.0.0") -> None:
         self.user_agent = user_agent
         self._opener = urllib.request.build_opener(NoRedirectHandler)
 

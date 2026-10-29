@@ -543,8 +543,20 @@ def main(args: Sequence[str] | None = None) -> int:
     return 0
 
 
+def _is_port_in_use(host: str, port: int) -> bool:
+    """Check if the given host:port is already bound by another process."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+            return False
+        except OSError:
+            return True
+
+
 def handle_web(host: str, port: int, reload: bool = False) -> int:
-    """Launch the ForgeFit FastAPI server via uvicorn."""
+    """Launch the ForgeFit FastAPI server via uvicorn with port conflict checking."""
     try:
         import uvicorn
     except ImportError:
@@ -554,8 +566,26 @@ def handle_web(host: str, port: int, reload: bool = False) -> int:
         )
         return 1
 
+    if _is_port_in_use(host, port):
+        sys.stderr.write(
+            f"Error: Port conflict detected. http://{host}:{port} is already in use.\n"
+            "Another ForgeFit web instance or application is occupying this port.\n"
+            f"To launch on an alternative port, run: forgefit web --port {port + 1}\n"
+        )
+        return 1
+
     sys.stdout.write(f"Starting ForgeFit Web Application on http://{host}:{port}\n")
-    uvicorn.run("forgefit.api:app", host=host, port=port, reload=reload)
+    try:
+        uvicorn.run("forgefit.api:app", host=host, port=port, reload=reload)
+    except (OSError, SystemExit) as err:
+        sys.stderr.write(
+            f"Error: Could not bind server to http://{host}:{port}: {err}\n"
+            f"Try running on an alternative port: forgefit web --port {port + 1}\n"
+        )
+        return 1
+    except Exception as err:
+        sys.stderr.write(f"Server execution error: {err}\n")
+        return 1
     return 0
 
 

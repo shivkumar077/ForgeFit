@@ -6,7 +6,52 @@ ForgeFit is built for API developers, platform engineers, and reliability specia
 
 ---
 
-## Milestone 5 Features: Complete Web Application & Backend Integration
+## Installation & Quick Start
+
+### Prerequisites
+- **Python**: 3.12 or higher
+- **Node.js**: 18 or higher (only required if compiling the frontend production bundle from source)
+
+### Installation
+Clone the repository and install ForgeFit into a virtual environment:
+
+```powershell
+# Create and activate virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# Option 1: Core CLI & engine only (pure standard library, 0 external dependencies)
+pip install -e .
+
+# Option 2: Core + FastAPI interactive web server
+pip install -e ".[web]"
+
+# Option 3: Full development and test dependencies
+pip install -e ".[dev,web]"
+```
+
+### Building the Frontend Production Bundle
+The interactive React frontend is bundled in `frontend/dist`. To rebuild from TypeScript sources:
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+### Launching the Application
+```powershell
+# Start the web interface on default http://127.0.0.1:8000
+forgefit web
+
+# If port 8000 is occupied, bind to an alternate port
+forgefit web --port 8001
+```
+
+---
+
+## v1.0.0 Architecture & Feature Overview
 
 Milestone 5 introduces a complete, responsive, production-minded web interface and FastAPI backend for ForgeFit:
 
@@ -505,10 +550,13 @@ ruff format src tests
 
 ---
 
-## Current Limitations
+## System Limitations & Persistence Model
 
-Milestone 5 provides a complete responsive web application, FastAPI backend, adaptive fault schedules, atomic reports, run comparisons, and metrics export. The following capabilities are explicitly deferred to future milestones:
-- Concurrency, worker pools, or asynchronous request scheduling.
-- Automated retry algorithms, backoff policies, or jitter schedules.
-- Live target discovery or automated security fuzzing.
-- External database persistence or multi-user access control.
+ForgeFit v1.0.0 is an offline-capable, local resilience testing toolkit designed for predictable developer workflows without external infrastructure dependencies:
+
+- **Sequential Execution**: Requests are executed sequentially to ensure deterministic latency measurement and strict fault schedule progression. Concurrent worker pools and parallel probe dispatch are intentionally not included.
+- **Local JSON Report Persistence**: Completed runs are persisted as atomic, immutable JSON files in the local filesystem (`reports/` by default). ForgeFit intentionally avoids external SQL databases, PostgreSQL, Neon, or cloud persistence.
+- **In-Memory Active Run State**: The backend `JobManager` tracks active execution progress in memory. If the web server process restarts, in-progress runs terminate, while all previously completed and saved JSON reports remain fully intact on disk and discoverable upon restart.
+- **Single-User / Local Developer Tool**: ForgeFit does not include multi-user authentication, tenant isolation, or distributed workers.
+- **Zero Third-Party Services**: No Redis, Celery, or cloud message brokers are required; execution runs on native Python worker threads.
+- **Strict Network Isolation**: All testing is loopback-only (`localhost`, `127.0.0.1`, `[::1]`) by default. External targets require explicit dual authorization flags.

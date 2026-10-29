@@ -582,7 +582,7 @@ ForgeFit supports a secure split deployment architecture:
 | Variable | Target | Purpose | Default / Example |
 | :--- | :--- | :--- | :--- |
 | `VITE_API_BASE_URL` | Frontend (Vercel) | Full base URL of the backend API (including `/api`) | `https://your-service.onrender.com/api` (Local default: `/api`) |
-| `FORGEFIT_CORS_ORIGINS` | Backend (Render) | Comma-separated allowed frontend origins | `https://your-app.vercel.app` (Local defaults: `localhost:5173`, etc.) |
+| `FORGEFIT_CORS_ORIGINS` | Backend (Render) | Comma-separated allowed frontend origins or wildcards | `https://*.vercel.app` (catches all Vercel deploys) |
 | `FORGEFIT_API_KEY` | Backend (Render) | Shared secret protecting `POST /api/runs` | Random secret token (e.g. `sk_live_...`). If unset, authentication is disabled. |
 | `FORGEFIT_REPORTS_DIR` | Backend (Render) | Directory path for atomic JSON report persistence | `/var/data/reports` (Local default: `reports`) |
 | `PORT` | Backend (Render) | Port for Uvicorn server | Set automatically by Render runtime |
@@ -609,7 +609,7 @@ ForgeFit supports a secure split deployment architecture:
    - Set environment variable: `FORGEFIT_REPORTS_DIR=/var/data/reports`.
    - When configured, ForgeFit automatically creates and locks this directory for all run reports, listing, comparisons, and exports, preventing arbitrary client path manipulation.
 4. **Environment Variables**:
-   - `FORGEFIT_CORS_ORIGINS`: Add your exact Vercel production domain (e.g. `https://forgefit.vercel.app`). Do not use wildcard `*` with credentials.
+   - `FORGEFIT_CORS_ORIGINS`: Add `https://*.vercel.app` to automatically match all Vercel URLs (including preview branches, project URLs, and production domains), or set your exact domain (e.g. `https://forgefit.vercel.app`).
    - `FORGEFIT_API_KEY`: Set a cryptographically strong secret token. When set, `POST /api/runs` requires the `X-ForgeFit-API-Key` header with constant-time verification.
 
 ---

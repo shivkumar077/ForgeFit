@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import threading
 from datetime import UTC, datetime
@@ -49,23 +50,49 @@ DEFAULT_CORS_ORIGINS = [
 
 
 def get_cors_origins() -> list[str]:
-    """Return parsed CORS origins from FORGEFIT_CORS_ORIGINS or local defaults.
+    """Return explicit (non-wildcard) origins from FORGEFIT_CORS_ORIGINS.
 
-    Disallows wildcard origins when credentials are enabled.
+    Falls back to local development origins when unset or empty.
     """
     raw = os.getenv("FORGEFIT_CORS_ORIGINS", "").strip()
     if not raw:
         return list(DEFAULT_CORS_ORIGINS)
     origins = [
-        o.strip().rstrip("/") for o in raw.split(",") if o.strip() and o.strip() != "*"
+        o.strip().rstrip("/") for o in raw.split(",") if o.strip() and "*" not in o
     ]
     return origins if origins else list(DEFAULT_CORS_ORIGINS)
 
 
-# Configure CORS with explicit allowed origins
+def get_cors_origin_regex() -> str | None:
+    """Return regex pattern for wildcard origins or explicit origin regex.
+
+    Supports wildcard domain patterns like 'https://*.vercel.app' in
+    FORGEFIT_CORS_ORIGINS and explicit regex in FORGEFIT_CORS_ORIGIN_REGEX.
+    """
+    regex_parts: list[str] = []
+
+    explicit_regex = os.getenv("FORGEFIT_CORS_ORIGIN_REGEX", "").strip()
+    if explicit_regex:
+        regex_parts.append(f"(?:{explicit_regex})")
+
+    raw = os.getenv("FORGEFIT_CORS_ORIGINS", "").strip()
+    if raw:
+        for entry in raw.split(","):
+            cleaned = entry.strip().rstrip("/")
+            if cleaned and cleaned != "*" and "*" in cleaned:
+                pattern = rf"^{re.escape(cleaned).replace(r'\*', r'.*')}$"
+                regex_parts.append(f"(?:{pattern})")
+
+    if not regex_parts:
+        return None
+    return "|".join(regex_parts)
+
+
+# Configure CORS with explicit allowed origins and wildcard pattern regex
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
+    allow_origin_regex=get_cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

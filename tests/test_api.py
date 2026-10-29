@@ -310,22 +310,39 @@ def test_api_concurrency_bounding() -> None:
 
 def test_cors_origins_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test get_cors_origins parses environment variable and filters invalid entries."""
-    from forgefit.api import DEFAULT_CORS_ORIGINS, get_cors_origins
+    from forgefit.api import (
+        DEFAULT_CORS_ORIGINS,
+        get_cors_origin_regex,
+        get_cors_origins,
+    )
 
-    # When unset, returns DEFAULT_CORS_ORIGINS
+    # When unset, returns DEFAULT_CORS_ORIGINS and None regex
     monkeypatch.delenv("FORGEFIT_CORS_ORIGINS", raising=False)
+    monkeypatch.delenv("FORGEFIT_CORS_ORIGIN_REGEX", raising=False)
     assert get_cors_origins() == DEFAULT_CORS_ORIGINS
+    assert get_cors_origin_regex() is None
 
-    # Custom comma-separated list
+    # Custom comma-separated list with wildcard
     monkeypatch.setenv(
         "FORGEFIT_CORS_ORIGINS",
-        "https://my-app.vercel.app, https://forgefit.example.com/, *",
+        "https://my-app.vercel.app, https://forgefit.example.com/, *, https://*.vercel.app",
     )
     parsed = get_cors_origins()
     assert "https://my-app.vercel.app" in parsed
     assert "https://forgefit.example.com" in parsed
-    # Wildcard is stripped for security when credentials are used
+    # Wildcards are stripped from allow_origins for credentials safety
     assert "*" not in parsed
+    assert "https://*.vercel.app" not in parsed
+
+    # Wildcard is translated into allow_origin_regex
+    regex = get_cors_origin_regex()
+    assert regex is not None
+    import re
+
+    compiled = re.compile(regex)
+    assert compiled.fullmatch("https://forgefit.vercel.app")
+    assert compiled.fullmatch("https://forgefit-preview-123.vercel.app")
+    assert not compiled.fullmatch("https://unauthorized.com")
 
 
 def test_api_key_protection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

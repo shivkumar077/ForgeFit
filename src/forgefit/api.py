@@ -128,13 +128,23 @@ def get_configured_reports_dir() -> Path:
     """Return the canonical reports directory configured by FORGEFIT_REPORTS_DIR.
 
     Defaults to 'reports' in the current working directory.
-    Creates the directory if it does not exist.
+    Creates the directory if it does not exist, with fallback on permission errors.
     """
     raw = os.getenv("FORGEFIT_REPORTS_DIR", "").strip()
     if raw:
         path = Path(raw).resolve()
-    else:
-        path = (Path.cwd() / "reports").resolve()
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+        except OSError as err:
+            logger.warning(
+                "Could not create reports directory '%s': %s. "
+                "Falling back to 'reports'.",
+                path,
+                err,
+            )
+
+    path = (Path.cwd() / "reports").resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 

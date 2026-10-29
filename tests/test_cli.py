@@ -584,3 +584,13 @@ def test_cli_scenario_validate_with_schedule(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "Fault schedule:         ramped" in captured.out
+
+
+def test_cli_web_help(capsys: pytest.CaptureFixture[str]) -> None:
+    """forgefit web --help displays web server options."""
+    with pytest.raises(SystemExit) as exc_info:
+        main(["web", "--help"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "Start the local ForgeFit web API" in captured.out
+    assert "--port" in captured.out

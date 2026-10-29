@@ -43,6 +43,7 @@ class ResilienceEngine:
         self,
         scenario: Scenario,
         extra_metadata: dict[str, Any] | None = None,
+        progress_callback: Callable[[int, int, RequestOutcome], None] | None = None,
     ) -> ResilienceReport:
         """Execute a Scenario according to its configuration.
 
@@ -177,6 +178,12 @@ class ResilienceEngine:
                     timestamp=resp.end_time,
                 )
                 outcomes.append(outcome)
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(i, config.request_count, outcome)
+                except Exception:
+                    pass
 
         end_wall = datetime.now(UTC)
         end_mono = self.clock()

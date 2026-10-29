@@ -187,6 +187,30 @@ def create_parser() -> argparse.ArgumentParser:
         help="Optional destination file path (defaults to stdout).",
     )
 
+    # Subcommand: web
+    web_parser = subparsers.add_parser(
+        "web",
+        help="Launch the ForgeFit interactive web application.",
+        description="Start the local ForgeFit web API and user interface.",
+    )
+    web_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind host (default: 127.0.0.1).",
+    )
+    web_parser.add_argument(
+        "--port",
+        "-p",
+        type=int,
+        default=8000,
+        help="Bind port (default: 8000).",
+    )
+    web_parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable auto-reload for development.",
+    )
+
     return parser
 
 
@@ -507,8 +531,31 @@ def main(args: Sequence[str] | None = None) -> int:
             pass
         return 0
 
+    if parsed_args.command == "web":
+        return handle_web(
+            host=parsed_args.host,
+            port=parsed_args.port,
+            reload=parsed_args.reload,
+        )
+
     # If no subcommand was provided, display help and exit cleanly
     parser.print_help()
+    return 0
+
+
+def handle_web(host: str, port: int, reload: bool = False) -> int:
+    """Launch the ForgeFit FastAPI server via uvicorn."""
+    try:
+        import uvicorn
+    except ImportError:
+        sys.stderr.write(
+            "Error: 'uvicorn' is required to run the ForgeFit web application.\n"
+            "Install it via: pip install 'forgefit[web]' or pip install uvicorn\n"
+        )
+        return 1
+
+    sys.stdout.write(f"Starting ForgeFit Web Application on http://{host}:{port}\n")
+    uvicorn.run("forgefit.api:app", host=host, port=port, reload=reload)
     return 0
 
 

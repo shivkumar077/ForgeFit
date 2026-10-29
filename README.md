@@ -6,6 +6,45 @@ ForgeFit is built for API developers, platform engineers, and reliability specia
 
 ---
 
+## Milestone 5 Features: Complete Web Application & Backend Integration
+
+Milestone 5 introduces a complete, responsive, production-minded web interface and FastAPI backend for ForgeFit:
+
+- **Interactive Developer Web Interface (`frontend/`)**:
+  - **Landing Page**:
+    - High-impact editorial hero with live interactive packet flow simulator.
+    - Real-time adjustment of latency and failure rates with instant visual packet feedback.
+    - Deep dives into resilient engineering principles, workflow steps, and safety guarantees.
+  - **Scenario Builder**:
+    - Visual forms for configuring target endpoints, iterations, deadlines, and socket timeouts.
+    - Dedicated visual editors for **Adaptive Fault Schedules** (Constant, Step-based thresholds with dynamic row additions, and linearly Ramped progressions).
+    - Pre-configured quick-launch templates (Localhost Baseline, Ramped Latency Stress, Sudden Degradation Spike, Deadline Clamping Probe).
+    - One-click schema validation and live JSON inspection.
+  - **Live Execution Monitor**:
+    - Real-time polling and progress tracking without blocking UI interactions.
+    - Prominent KPI summaries (Total Requests, Success Rate %, Mean Latency, p95 Latency, Simulated Faults, HTTP/Socket Errors).
+    - Chronological outcomes breakdown table with latency visualizers and error classifications.
+  - **Persisted Reports Explorer**:
+    - Full search and filtering over saved execution artifacts.
+    - Slide-over inspection modal displaying complete configuration summaries and raw report JSON.
+    - One-click exports to Prometheus text format or OpenTelemetry JSON with clipboard copy and file download.
+  - **Run Comparison Engine**:
+    - Side-by-side run selector with automated workload divergence checks (target URL / timeout mismatches) and sample size advisories.
+    - Full comparative metrics table with delta values, percentage differences, and directional assessment badges (`Improved`, `Degraded`, `Neutral`, `Unchanged`).
+  - **Comprehensive About Page**:
+    - Exhaustive architectural documentation covering cascading failures, retry storms, schedule boundaries, atomic report immutability, and verified creator credits (`shivkumar077`).
+
+- **FastAPI Backend Integration (`forgefit.api`)**:
+  - Exposes all core resilience capabilities over a clean, documented local REST API.
+  - In-process thread-based worker manager (`JobManager`) tracking active execution states (`queued`, `running`, `completed`, `interrupted`, `failed`) with automatic fallback reconciliation to persisted disk reports.
+  - Loopback-by-default safety enforcement returning HTTP 403 Forbidden on unacknowledged external targets.
+  - Zero external network dependencies for offline operation.
+
+- **CLI Web Launch Command**:
+  - `forgefit web`: Instantly serves both the FastAPI API and the compiled React production frontend on `http://127.0.0.1:8000`.
+
+---
+
 ## Milestone 4 Features: Adaptive Fault Schedules & Metrics Export
 
 Milestone 4 enhances ForgeFit with adaptive fault progression schedules and offline standard-format metrics exporters:
@@ -211,6 +250,19 @@ forgefit scenario --help
 # Display help for reports subcommands
 forgefit reports --help
 ```
+
+### Launch Interactive Web Application (`forgefit web`)
+
+Start the local ForgeFit interactive web application and REST API:
+
+```powershell
+# Launch web interface on default http://127.0.0.1:8000
+forgefit web
+
+# Bind to a custom port
+forgefit web --port 8080
+```
+
 
 ### Validate a Scenario
 
@@ -437,7 +489,7 @@ ForgeFit uses `pytest` for unit testing and `Ruff` for linting and formatting.
 # Run the complete test suite offline
 pytest -v
 ```
-All 170 automated tests execute entirely offline using local mock servers and temporary directories. Zero external network calls are made.
+All 179 automated tests execute entirely offline using local mock servers and temporary directories. Zero external network calls are made.
 
 ### Run Linter & Formatter
 ```powershell
@@ -455,8 +507,8 @@ ruff format src tests
 
 ## Current Limitations
 
-Milestone 4 provides adaptive fault schedules, atomic reports, run comparisons, and Prometheus/OpenTelemetry metrics export. The following capabilities are explicitly deferred to future milestones:
-- Web dashboard, frontend UI, or database persistence.
+Milestone 5 provides a complete responsive web application, FastAPI backend, adaptive fault schedules, atomic reports, run comparisons, and metrics export. The following capabilities are explicitly deferred to future milestones:
 - Concurrency, worker pools, or asynchronous request scheduling.
 - Automated retry algorithms, backoff policies, or jitter schedules.
 - Live target discovery or automated security fuzzing.
+- External database persistence or multi-user access control.

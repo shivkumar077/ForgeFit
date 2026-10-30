@@ -710,7 +710,19 @@ def export_saved_report(
         )
 
 
-# Serve frontend static assets if built
+# Serve frontend static assets if built, otherwise provide informative root status
 frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 if frontend_dist.is_dir():
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
+else:
+
+    @app.get("/", include_in_schema=False)
+    def root() -> dict[str, str]:
+        """Return backend status and links when UI is hosted externally."""
+        return {
+            "service": "ForgeFit API Backend",
+            "version": __version__,
+            "status": "healthy",
+            "health": "/api/status",
+            "docs": "/docs",
+        }

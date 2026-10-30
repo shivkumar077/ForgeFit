@@ -272,6 +272,18 @@
   border-color: var(--accent-primary);
 }
 
+.btn-warning {
+  background: rgba(234, 179, 8, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: rgba(234, 179, 8, 0.25);
+  border-color: #f59e0b;
+  color: #fef08a;
+}
+
 .btn-subtle {
   background: transparent;
   color: var(--text-secondary);

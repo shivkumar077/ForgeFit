@@ -240,9 +240,21 @@ export const App: React.FC = () => {
                 setShowApiKeyModal(true);
               }}
               title={apiKey ? "API Key active (session)" : apiStatus?.api_key_required ? "API Key required by backend" : "Configure API Key (optional)"}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                ...(apiKey
+                  ? { color: 'var(--color-success)', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                  : apiStatus?.api_key_required
+                  ? { background: 'rgba(234, 179, 8, 0.18)', color: '#fbbf24', borderColor: 'rgba(234, 179, 8, 0.45)' }
+                  : {}),
+              }}
             >
-              <Key size={14} />
+              <Key size={14} color={apiKey ? 'var(--color-success)' : apiStatus?.api_key_required ? '#fbbf24' : 'currentColor'} />
               <span>{apiKey ? 'API Key Set' : apiStatus?.api_key_required ? 'API Key Required' : 'API Key'}</span>
             </button>
 

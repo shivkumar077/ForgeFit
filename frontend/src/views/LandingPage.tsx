@@ -403,19 +403,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>— API Resilience Testing Toolkit</span>
           </div>
 
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span>Created by Shiv (shivkumar077)</span>
-            <span>•</span>
-            <span>MIT License</span>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px' }}>
+            <span>Created by <strong style={{ color: 'var(--text-primary)' }}>Shiv Kumar</strong></span>
             <span>•</span>
             <a
-              href="https://github.com/shivkumar077/ForgeFit"
+              href="https://github.com/shivkumar077"
               target="_blank"
               rel="noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-primary)' }}
             >
               GitHub <ExternalLink size={13} />
             </a>
+            <span>•</span>
+            <a
+              href="https://www.linkedin.com/in/shiv-kumar-399a32231/"
+              target="_blank"
+              rel="noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#38bdf8' }}
+            >
+              LinkedIn <ExternalLink size={13} />
+            </a>
+            <span>•</span>
+            <span>MIT License</span>
           </div>
         </div>
       </footer>
